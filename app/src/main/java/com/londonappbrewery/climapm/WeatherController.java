@@ -1,26 +1,44 @@
 package com.londonappbrewery.climapm;
 
+import android.Manifest;
+import android.content.AsyncQueryHandler;
+import android.content.pm.PackageManager;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.os.Bundle;
+import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
+import android.util.Log;
+import android.view.View;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
+
+import com.loopj.android.http.AsyncHttpClient;
+import com.loopj.android.http.JsonHttpResponseHandler;
+import com.loopj.android.http.RequestParams;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import cz.msebera.android.httpclient.Header;
 
 
 public class WeatherController extends AppCompatActivity {
-
+    final int REQUEST_CODE = 123;
     // Constants:
     final String WEATHER_URL = "http://api.openweathermap.org/data/2.5/weather";
     // App ID to use OpenWeather data
-    final String APP_ID = "e72ca729af228beabd5d20e3b7749713";
+    final String APP_ID = "255ea65bd81b898771222c3999e464fe";
     // Time between location updates (5000 milliseconds or 5 seconds)
     final long MIN_TIME = 5000;
     // Distance between location updates (1000m or 1km)
     final float MIN_DISTANCE = 1000;
 
     // TODO: Set LOCATION_PROVIDER here:
-
-
+    final String LOCATION_PROVIDER = LocationManager.GPS_PROVIDER;
 
 
     // Member Variables:
@@ -29,7 +47,8 @@ public class WeatherController extends AppCompatActivity {
     TextView mTemperatureLabel;
 
     // TODO: Declare a LocationManager and a LocationListener here:
-
+    private LocationManager manager;
+    private LocationListener listener;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -43,14 +62,18 @@ public class WeatherController extends AppCompatActivity {
         ImageButton changeCityButton = (ImageButton) findViewById(R.id.changeCityButton);
 
 
-
         // TODO: Add an OnClickListener to the changeCityButton here:
-
     }
 
 
     // TODO: Add onResume() here:
-
+    @Override
+    public void onResume() {
+        super.onResume();
+        Log.d("Clima", "onResume() called");
+        Log.d("Clima", "Getting weather for current location");
+        getWeatherForCurrentLocation();
+    }
 
 
     // TODO: Add getWeatherForNewCity(String city) here:
@@ -58,19 +81,111 @@ public class WeatherController extends AppCompatActivity {
 
 
     // TODO: Add getWeatherForCurrentLocation() here:
+    public void getWeatherForCurrentLocation() {
+
+        manager = (LocationManager) getSystemService(LOCATION_SERVICE);
+        listener = new LocationListener() {
+            @Override
+            public void onLocationChanged(Location location) {
+                Log.d("Clima", "Location Changed!");
+
+                String longitude = String.valueOf(location.getLongitude());
+                String latitude = String.valueOf(location.getLatitude());
+
+                Log.d("Clima", "Longitude is: " + longitude);
+                Log.d("Clima", "Latitude is: " + latitude);
+
+                RequestParams params = new RequestParams();
+                params.put("lat", latitude);
+                params.put("lon", longitude);
+                params.put("appID", APP_ID);
+                letsDoSomeNetworking(params);
+            }
+
+            @Override
+            public void onStatusChanged(String provider, int status, Bundle extras) {
+                Log.d("Clima", "Status Changed!");
+
+            }
+
+            @Override
+            public void onProviderEnabled(String provider) {
+                Log.d("Clima", "Provider Enabled!");
 
 
+            }
 
+            @Override
+            public void onProviderDisabled(String provider) {
+                Log.d("Clima", "Provider Disabled!");
+            }
+        };
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+
+            ActivityCompat.requestPermissions(this, new String[] {Manifest.permission.ACCESS_FINE_LOCATION}, REQUEST_CODE);
+
+            return;
+        }
+        manager.requestLocationUpdates(LOCATION_PROVIDER, MIN_TIME, MIN_DISTANCE, listener);
+    }
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        if (requestCode == REQUEST_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Log.d("Clima", "onRequestPermissionsResult(): Permission Granted!");
+                getWeatherForCurrentLocation();
+            } else {
+                Log.d("Clima", "onRequestPermissionsResult(): Permission Denied!");
+            }
+        }
+    }
     // TODO: Add letsDoSomeNetworking(RequestParams params) here:
+     private void letsDoSomeNetworking(RequestParams params) {
 
+        AsyncHttpClient client = new AsyncHttpClient();
 
+        client.get(WEATHER_URL, params, new JsonHttpResponseHandler() {
+                    @Override
+                    public void onSuccess(int statusCode, Header[] headers, JSONObject response) {
+                        super.onSuccess(statusCode, headers, response);
+                        Log.d("Clima", "Response: " + response.toString());
 
-    // TODO: Add updateUI() here:
+                        WeatherDataModel weatherDataModel = WeatherDataModel.fromJson(response);
+                        updateUI(weatherDataModel);
+                    }
 
+                    @Override
+                    public void onFailure(int statusCode, Header[] headers, Throwable throwable, JSONArray errorResponse) {
+                        super.onFailure(statusCode, headers, throwable, errorResponse);
+                        Log.e("Clima", "Fail: " + throwable.toString());
+                        Log.d("Clima", "Status Code: " + Integer.toString(statusCode));
+                        Log.d("Clima", "Error Response: " + errorResponse.toString());
 
+                        Toast.makeText(WeatherController.this, "JSON GET failed", Toast.LENGTH_SHORT);
+                    }
+                });
+     }
 
-    // TODO: Add onPause() here:
+     private void updateUI(WeatherDataModel weatherDataModel){
+        mCityLabel.setText(weatherDataModel.getCity());
+        mTemperatureLabel.setText(weatherDataModel.getTemperature());
 
+        int resourceId = getResources().getIdentifier(weatherDataModel.getIconName(), "drawable", getPackageName());
+        mWeatherImage.setImageResource(resourceId);
+     }
 
+            // TODO: Add onPause() here:
 
 }
+
+
+
